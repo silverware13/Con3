@@ -1,19 +1,12 @@
-/* Concurrency 2
+/* Concurrency 3
  * CS444 Spring2018
  * ----------------
  * Name: Zachary Thomas
  * Email: thomasza@oregonstate.edu
- * Date: 4/23/2018
+ * Date: 5/11/2018
  * -------------------------------
- *  This program creates five philosophers
- *  who think, get forks, eat, and put forks down.
- *  It also manages these philosophers to prevent
- *  deadlock. More than one single philosopher
- *  can eat at the same time.
  */
 
-#define PHILOSOPHERS 5
-#define FORKS 5
 #include "mt19937ar.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,73 +17,96 @@
 #include <ctype.h>
 
 //function prototype(s)
-void spawn_threads();
-void* philosopher_thread(void *thread_num);
-void get_name(int select, char name[]);
-void think(char name[]);
-void get_forks(int select, char name[]);
-void eat(char name[]);
-void put_forks(int select, char name[]); 
+void spawn_threads(int insert, int search, int delete)
+void* search_thread();
+void* insert_thread();
+void* delete_thread();
 int random_range(int min_val, int max_val);
 
 //create mutex lock(s)
-pthread_mutex_t fork1 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t fork2 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t fork3 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t fork4 = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t fork5 = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t insert_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t search_lock  = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char **argv)
 {
+	//first make sure the user entered numbers for
+	//insert, search and delete threads
+	if(argc < 4){
+		printf("USEAGE: %s [number of inserter threads] [number of searcher threads] [number of deleter threads]\n", argv[0]);
+		return 0;
+	}		
+
+	//make sure the user has entered digits
+	if(!isdigit(*argv[1]) || !isdigit(*argv[2]) || !isdigit(*argv[3])){
+		printf("Please enter arguments as unsigned integers.\n");
+		return 0;
+	}
+
+	//convert arguments to int
+	int insert, search, delete;
+	insert = strtol(argv[1], NULL, 10);	
+	search = strtol(argv[2], NULL, 10);
+	delete = strtol(argv[3], NULL, 10);
+
 	//seed random number generation
 	init_genrand(time(NULL));
 	srand(time(NULL));	
 
-	printf("\n%d forks and %d plates of food have been placed on the table.\n", FORKS, PHILOSOPHERS);
-
 	//create threads and wait for their completion
-	spawn_threads();
+	spawn_threads(insert, search, delete);
 	
 	//destroy mutex lock(s)	
-	pthread_mutex_destroy(&fork1);
-	pthread_mutex_destroy(&fork2);
-	pthread_mutex_destroy(&fork3);
-	pthread_mutex_destroy(&fork4);
-	pthread_mutex_destroy(&fork5);
+	pthread_mutex_destroy(&insert_lock);
+	pthread_mutex_destroy(&search_lock);
 	
 	return 0;
 }
 
 /* Function: spawn_threads
  * -----------------------
- * Spawns five philosopher threads, then waits for threads to
+ * Spawns inserter, searcher, and deleter threads, then waits for threads to
  * finish execution and join. Since these threads will run forever, we expect
  * to block here indefinitely.
  */
-void spawn_threads()
+void spawn_threads(int insert, int search, int delete)
 {
+	int some_threads;
 	pthread_t thrd;
-	for(int i = PHILOSOPHERS; i > 0; i--){
-		int *thread_num = malloc(sizeof(*thread_num));
-		*thread_num = i; //thread_num will act as an id for thread
-		pthread_create(&thrd, NULL, philosopher_thread, (void *) thread_num);
-	}
 	
-	//join thread (this should never finish)
- 	pthread_join(thrd, NULL);
-}
+	if(!producers && !consumers)
+		some_threads = false;
+	else
+		some_threads = true;
 
-/* Function: philosopher_thread
+	printf("\nCreating %d inserter, %d searcher, and %d deleter threads.\n\n", insert, search, delete);
+	
+	while(insert || search || delete){
+		if(insert){
+			pthread_create(&thrd, NULL, insert_thread, NULL);
+			producers--;
+		}
+
+		if(search){
+			pthread_create(&thrd, NULL, search_thread, NULL);
+			consumers--;
+		}
+		
+		if(delete){
+			pthread_create(&thrd, NULL, delete_thread, NULL);
+			consumers--;
+		}
+	}
+
+	//join thread (this should never finish)
+	if(some_threads)
+		pthread_join(thrd, NULL);
+}
+/* Function: search_thread
  * -------------------------
- * This function is called by a new philosopher thread when it is created.
- * 
- * First this thread gets its name using the identifer passed to it.
- * Afterwards it loops forever, thinking, getting forks, eating,
- * and putting forks down.
+ * This function is called by a new search thread when it is created.
  *
- * *thread_num: A pointer to an identifer for the thread.
  */
-void* philosopher_thread(void *thread_num)
+void* search_thread()
 {
 	int *select_ptr = (int*) thread_num; 
 	int select = *select_ptr;
@@ -109,178 +125,54 @@ void* philosopher_thread(void *thread_num)
 	free(thread_num);
 }
 
-/* Function: get_name
+/* Function: insert_thread
  * -------------------------
- * This function selects a philosopher name
- * and assigns it to the input char array.
+ * This function is called by a new insert thread when it is created.
  *
- * select: Used to a select a given name.
- * name: The array where we store the name.
  */
-void get_name(int select, char name[])
+void* insert_thread()
 {
-	switch(select){
-	
-		case 1 :
-			strncpy(name, "Descartes", 50);
-			break;
-		
-		case 2 :
-			strncpy(name, "Socrates", 50);
-			break;
+	int *select_ptr = (int*) thread_num; 
+	int select = *select_ptr;
+	char name[50];
+	get_name(select, name);
+	printf("%s sits down at the table.\n", name);
+	sleep(1);
 
-		case 3 :
-			strncpy(name, "Confucius", 50);
-			break;
-
-		case 4 :
-			strncpy(name, "Plato", 50);
-			break;
-
-		case 5 :
-			strncpy(name, "Voltaire", 50);
-			break;
-
-		default :
-			strncpy(name, "Philosopher", 50);
-			break;
+	while(true){
+		think(name);
+		get_forks(select, name);
+		eat(name);
+		put_forks(select, name);
 	}
+
+	free(thread_num);
 }
 
-/* Function: think
+/* Function: delete_thread
  * -------------------------
- * Thread sleeps between 1 and 20 seconds.
- *
- * name: The current philosopher's name.
+ * This function is called by a new delete thread when it is created.
+ * 
  */
-void think(char name[])
+void* delete_thread()
 {
-	int think_time = random_range(1, 20);
-	printf("%s started thinking for %d seconds.\n", name, think_time);
-	sleep(think_time);
-}
+	int *select_ptr = (int*) thread_num; 
+	int select = *select_ptr;
+	char name[50];
+	get_name(select, name);
+	printf("%s sits down at the table.\n", name);
+	sleep(1);
 
-/* Function: get_forks
- * -------------------------
- * The current philosopher attempts
- * to pickup the fork to their right and left
- * one philosopher always picks up the left fork
- * first, the rest pick up the right first.
- * In this context picking up a fork means to
- * lock a mutex.
- *
- * select: The id of the philosopher.
- * name: The current philosopher's name.
- */
-void get_forks(int select, char name[])
-{
-	switch(select){
-	
-		case 1 :
-			pthread_mutex_lock(&fork1);
-			printf("%s got fork #1.\n", name);
-			pthread_mutex_lock(&fork2);
-			printf("%s got fork #2.\n", name);
-			break;
-		
-		case 2 :
-			pthread_mutex_lock(&fork2);
-			printf("%s got fork #2.\n", name);
-			pthread_mutex_lock(&fork3);
-			printf("%s got fork #3.\n", name);
-			break;
-
-		case 3 :
-			pthread_mutex_lock(&fork3);
-			printf("%s got fork #3.\n", name);
-			pthread_mutex_lock(&fork4);
-			printf("%s got fork #4.\n", name);
-			break;
-
-		case 4 :
-			pthread_mutex_lock(&fork4);
-			printf("%s got fork #4.\n", name);
-			pthread_mutex_lock(&fork5);
-			printf("%s got fork #5.\n", name);
-			break;
-
-		case 5 :
-			//philosopher #5 is left handed.
-			pthread_mutex_lock(&fork1);
-			printf("%s got fork #1.\n", name);
-			pthread_mutex_lock(&fork5);
-			printf("%s got fork #5.\n", name);
-			break;
+	while(true){
+		think(name);
+		get_forks(select, name);
+		eat(name);
+		put_forks(select, name);
 	}
+
+	free(thread_num);
 }
 
-/* Function: eat
- * -------------------------
- * Thread sleeps between 2 and 9 seconds.
- *
- * name: The current philosopher's name.
- */
-void eat(char name[])
-{
-	int eat_time = random_range(2, 9);
-	printf("%s started eating for %d seconds.\n", name, eat_time);
-	sleep(eat_time);
-}
-
-/* Function: put_forks
- * -------------------------
- * The current philosopher attempts
- * to set down the fork to their right and left
- * one philosopher always sets down the left fork
- * first, the rest set down the right first.
- * In this context picking up a fork means to
- * unlock a mutex.
- *
- * select: The id of the philosopher.
- * name: The current philosopher's name.
- */
-void put_forks(int select, char name[])
-{
-	switch(select){
-	
-		case 1 :
-			pthread_mutex_unlock(&fork1);
-			printf("%s set down fork #1.\n", name);
-			pthread_mutex_unlock(&fork2);
-			printf("%s set down fork #2.\n", name);
-			break;
-		
-		case 2 :
-			pthread_mutex_unlock(&fork2);
-			printf("%s set down fork #2.\n", name);
-			pthread_mutex_unlock(&fork3);
-			printf("%s set down fork #3.\n", name);
-			break;
-
-		case 3 :
-			pthread_mutex_unlock(&fork3);
-			printf("%s set down fork #3.\n", name);
-			pthread_mutex_unlock(&fork4);
-			printf("%s set down fork #4.\n", name);
-			break;
-
-		case 4 :
-			pthread_mutex_unlock(&fork4);
-			printf("%s set down fork #4.\n", name);
-			pthread_mutex_unlock(&fork5);
-			printf("%s set down fork #5.\n", name);
-			break;
-
-		case 5 :
-			//philosopher #5 is left handed.
-			pthread_mutex_unlock(&fork1);
-			printf("%s set down fork #1.\n", name);
-			pthread_mutex_unlock(&fork5);
-			printf("%s set down fork #5.\n", name);
-			break;
-	}
-}
- 
 /* Function: random_range
  * ----------------------
  * This function finds a random number between a min and max value (inclusive).
