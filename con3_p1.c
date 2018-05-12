@@ -79,6 +79,13 @@ void spawn_threads()
 /* Function: search_thread
  * -------------------------
  * This function is called by a new resource thread when it is created.
+ *
+ * This thread thinks about using a resource for 1-3 seconds.
+ * Then it will access the resource if there are less than 3 users,
+ * but only if there wasn't previously 3 users, if there were this thread
+ * waits until there are zero.
+ * Next it uses the resource for 0-2 seconds.
+ * Lastly it leaves the resource.
  */
 void* resource_thread()
 {
