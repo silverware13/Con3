@@ -1,5 +1,5 @@
 all :
-	gcc -std=c99 -pthread -o concurrency3 concurrency3.c
+	gcc -std=c99 -pthread -o con3_p2 con3_p2.c
 
 clean:
-	rm concurrency3
+	rm con3_p2
