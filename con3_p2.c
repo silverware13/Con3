@@ -24,6 +24,8 @@ typedef struct node{
 
 //global variable(s)
 node* list_head = NULL;
+int switch_num = 0;
+int list_length = 0;
 
 //function prototype(s)
 void spawn_threads(int insert, int search, int delete);
@@ -34,7 +36,8 @@ int random_range(int min_val, int max_val);
 
 //create mutex lock(s)
 pthread_mutex_t insert_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t search_lock  = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t search_switch = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t delete_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char **argv)
 {
@@ -69,7 +72,8 @@ int main(int argc, char **argv)
 	
 	//destroy mutex lock(s)	
 	pthread_mutex_destroy(&insert_lock);
-	pthread_mutex_destroy(&search_lock);
+	pthread_mutex_destroy(&search_switch);
+	pthread_mutex_destroy(&delete_lock);
 	
 	return 0;
 }
@@ -89,6 +93,8 @@ void spawn_threads(int insert, int search, int delete)
 		return;
 
 	printf("\nCreating %d inserter, %d searcher, and %d deleter threads.\n\n", insert, search, delete);
+	printf("NOTE:\n>>[THREAD] Represents a thread starting to access the list.\n<<[THREAD] Represents a thread leaving the list.\n\n");
+	sleep(4);
 	
 	while(insert || search || delete){
 		if(insert){
@@ -110,6 +116,7 @@ void spawn_threads(int insert, int search, int delete)
 	//join thread (this should never finish)
 	pthread_join(thrd, NULL);
 }
+
 /* Function: search_thread
  * -------------------------
  * This function is called by a new search thread when it is created.
@@ -118,6 +125,20 @@ void spawn_threads(int insert, int search, int delete)
 void* search_thread()
 {
 	while(true){
+		//turn on search switch and confirm that delete is not running.
+		int lock_value;
+		pthread_mutex_trylock(&search_switch);
+		lock_value = pthread_mutex_trylock(&delete_lock);
+		if(lock_value){
+			sleep(1);
+			continue;	
+		} else {
+			pthread_mutex_unlock(&delete_lock);
+			switch_num++;
+		}
+		printf(">>[SEARCH]\n");
+
+		//print the contents of the list.	
 		char buffer[250000] = {0};
 		int first_number = 1;
 		node* current = list_head;
@@ -131,7 +152,14 @@ void* search_thread()
 				sprintf(buffer + strlen(buffer), ", %d", current->val);
 			}	
 		}
-		printf("%s.\n", buffer);	
+		printf("%s.\n", buffer);
+
+		//unlock if this is the last search thread to exit.
+		printf("<<[SEARCH]\n");
+		switch_num--;
+		if(switch_num < 1){
+			pthread_mutex_unlock(&search_switch);
+		}	
 		sleep(1);
 	}
 }
@@ -144,6 +172,11 @@ void* search_thread()
 void* insert_thread()
 {
 	while(true){
+		//get the insert lock
+		pthread_mutex_lock(&insert_lock);
+		printf(">>[INSERT]\n");
+		
+		//insert a new value at the end of the list
 		int insert_val = random_range(1, 99);
 		node* current = list_head;
 		while(current->next != NULL){
@@ -152,7 +185,12 @@ void* insert_thread()
 		current->next = malloc(sizeof(node));
 		current->next->val = insert_val;
 		current->next->next = NULL;
-		printf("[INSERT] Added %d to end of list.\n", insert_val);		
+		list_length++;
+		printf("[INSERT] Added %d to end of list.\n", insert_val);
+
+		//unlock the insert lock
+		printf("<<[INSERT]\n");
+		pthread_mutex_unlock(&insert_lock);		
 		sleep(1);
 	}
 }
@@ -160,11 +198,61 @@ void* insert_thread()
 /* Function: delete_thread
  * -------------------------
  * This function is called by a new delete thread when it is created.
- * 
+ *
+ * The thread grabs the delete and insert locks. Then it confirms that
+ * no search threads are running. If they are, it releases the locks
+ * and restarts. If there are no threads running it then deletes a
+ * random node from the linked list before unlocking the locks. 
  */
 void* delete_thread()
 {
 	while(true){
+		//grab locks and confirm that no search thread(s) running.
+		int lock_value;
+		pthread_mutex_lock(&delete_lock);
+		pthread_mutex_lock(&insert_lock);
+		lock_value = pthread_mutex_trylock(&search_switch);
+		if(lock_value){
+			pthread_mutex_unlock(&delete_lock);	
+			pthread_mutex_unlock(&insert_lock);	
+			sleep(1);
+			continue;	
+		} else {
+			pthread_mutex_unlock(&search_switch);
+		}	
+	
+		//delete a random node from the linked list
+		int remove_node = random_range(1, list_length);	
+		int current_node = 1;
+		printf(">>[DELETE]\n");
+		node* previous = list_head;
+		node* current = list_head->next;
+		if(current == NULL){
+			printf("[DELETE] Nothing to delete.\n");
+			printf("<<[DELETE]\n");
+			pthread_mutex_unlock(&delete_lock);	
+			pthread_mutex_unlock(&insert_lock);	
+			sleep(1);
+			continue;	
+		}
+
+		while(current->next != NULL){
+			if(remove_node == current_node){
+				break;
+			}
+			previous = current;	
+			current = current->next;	
+			current_node++;
+		}
+		printf("[DELETE] Removed %d from the list.\n", current->val);
+		previous->next = current->next;
+		free(current);
+		list_length--;
+	
+		//unlock the locks	
+		printf("<<[DELETE]\n");
+		pthread_mutex_unlock(&delete_lock);	
+		pthread_mutex_unlock(&insert_lock);	
 		sleep(1);
 	}
 }
