@@ -76,7 +76,7 @@ void spawn_threads()
 	pthread_join(thrd, NULL);
 }
 
-/* Function: search_thread
+/* Function: resource_thread
  * -------------------------
  * This function is called by a new resource thread when it is created.
  *
