@@ -5,6 +5,14 @@
  * Email: thomasza@oregonstate.edu
  * Date: 5/11/2018
  * -------------------------------
+ * Creates insert, search, and delete threads.
+ * These threads interact with a linked list.
+ * Inserters can only insert one at a time, but are okay with
+ * searchers interacting with the list at the same time.
+ * Searchers can interact with the list at the same time as other 
+ * searchers.
+ * Deleters must have sole access to the list. They do not allow
+ * inserters or searchers.
  */
 
 #include "mt19937ar.h"
@@ -121,6 +129,11 @@ void spawn_threads(int insert, int search, int delete)
  * -------------------------
  * This function is called by a new search thread when it is created.
  *
+ * It accesses the list and prints out the contents. It may access the list
+ * at the same time as other searchers as well as at the same time as an insert thread.
+ * First it actives the switch saying that there are searchers accesssing the list.
+ * Then if there is not a deleter accessing the list it prints the contents.
+ * When the last searcher leaves the list it turns off the searcher switch. 
  */
 void* search_thread()
 {
@@ -154,7 +167,7 @@ void* search_thread()
 		}
 		printf("%s.\n", buffer);
 
-		//unlock if this is the last search thread to exit.
+		//turn off switch if this is the last search thread to exit.
 		printf("<<[SEARCH]\n");
 		switch_num--;
 		if(switch_num < 1){
@@ -167,6 +180,10 @@ void* search_thread()
 /* Function: insert_thread
  * -------------------------
  * This function is called by a new insert thread when it is created.
+ *
+ * Inserters may not access the list at the same time as another
+ * inserter or deleter. They add a random number to the end of the list.
+ * They start by locking the insert mutex. When they leave the list the unlock it.
  *
  */
 void* insert_thread()
